@@ -1,0 +1,72 @@
+<?php
+
+namespace App\Models;
+
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRole;
+use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+
+#[Fillable(['name', 'email', 'password', 'role', 'client_id'])]
+#[Hidden(['password', 'remember_token'])]
+class User extends Authenticatable
+{
+    /** @use HasFactory<UserFactory> */
+    use HasApiTokens, HasFactory, Notifiable;
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'role' => UserRole::class,
+        ];
+    }
+
+    /**
+     * Klien yang terhubung dengan akun ini (khusus role client).
+     *
+     * @return BelongsTo<Client, User>
+     */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    /**
+     * Riwayat perpanjangan yang dicatat oleh user ini.
+     *
+     * @return HasMany<Renewal>
+     */
+    public function renewals(): HasMany
+    {
+        return $this->hasMany(Renewal::class, 'renewed_by');
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === UserRole::Admin;
+    }
+
+    public function isStaff(): bool
+    {
+        return $this->role === UserRole::Staff;
+    }
+
+    public function isClient(): bool
+    {
+        return $this->role === UserRole::Client;
+    }
+}

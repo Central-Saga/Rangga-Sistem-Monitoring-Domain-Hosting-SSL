@@ -1,0 +1,109 @@
+services:
+  db:
+    image: docker.io/library/postgres:16-alpine
+    container_name: monitoring-db
+    environment:
+      POSTGRES_USER: monitoring
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: monitoring_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitoring -d monitoring_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    ports:
+      - "5432:5432"
+    networks:
+      - monitoring
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: monitoring-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks:
+      - monitoring
+
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    container_name: monitoring-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - "8025:8025"   # Web UI email: http://localhost:8025
+      - "1025:1025"   # SMTP
+    networks:
+      - monitoring
+
+  backend:
+    build:
+      context: ./backend
+    container_name: monitoring-backend
+    env_file:
+      - ./backend/.env.compose
+    ports:
+      - "8000:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - monitoring
+
+  queue:
+    build:
+      context: ./backend
+    container_name: monitoring-queue
+    command: ["php", "artisan", "queue:work", "redis", "--queue=notifications,default", "--tries=3", "--backoff=3"]
+    env_file:
+      - ./backend/.env.compose
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - monitoring
+
+  scheduler:
+    build:
+      context: ./backend
+    container_name: monitoring-scheduler
+    command: ["php", "artisan", "schedule:work"]
+    env_file:
+      - ./backend/.env.compose
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - monitoring
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    container_name: monitoring-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - monitoring
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  monitoring:
+    driver: bridge

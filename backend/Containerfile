@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+
+#############################################
+# Stage 1: instal dependensi Composer
+#############################################
+FROM docker.io/composer:2 AS vendor
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --prefer-dist --no-interaction --no-scripts --no-progress
+COPY . .
+RUN composer dump-autoload --optimize
+
+#############################################
+# Stage 2: runtime PHP-FPM + Nginx
+#############################################
+FROM docker.io/serversideup/php:8.4-fpm-nginx
+
+ENV PHP_OPCACHE_ENABLE=1 \
+    AUTORUN_ENABLED=false
+
+WORKDIR /var/www/html
+
+COPY --from=vendor --chown=www-data:www-data /app /var/www/html
+
+# Skrip init: migrasi + seed (hanya saat DB kosong) sebelum service jalan
+COPY --chmod=755 docker/entrypoint.d/ /etc/entrypoint.d/
+
+USER www-data
